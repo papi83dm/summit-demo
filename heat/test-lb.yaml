@@ -1,0 +1,61 @@
+heat_template_version: 2013-05-23
+
+parameters:
+  int_net:
+    description: internal network
+    type: string
+    default: private
+  subnet:
+    type: string
+    description: internal subnet
+    default: private-subnet
+  ext_net:
+    type: string
+    description: public network
+    default: public
+
+resources:
+
+  keypair:
+    type: IBM::Alchemy::Keypair
+   
+  asg:
+    type: IBM::Alchemy::LBGroup
+    properties:
+      keypair: {get_attr: [keypair, keypair_id]}
+      network: {get_param: int_net}
+      subnet: {get_param: subnet}
+      ext_net: {get_param: ext_net}
+
+outputs:
+  member_list:
+    description: vm list
+    value: {get_attr: [asg, vm_list]}
+
+  key:
+    description: private key
+    value: {get_attr: [keypair, key]}
+
+  scale_up_url:
+    description: >
+      This URL is the webhook to scale up the group.  You can invoke
+      the scale-up operation by doing an HTTP POST to this URL; no
+      body nor extra headers are needed.
+    value: {get_attr: [asg, scale_up_url]}
+
+  scale_down_url:
+    description: >
+      This URL is the webhook to scale down the group.  You can invoke
+      the scale-up operation by doing an HTTP POST to this URL; no
+      body nor extra headers are needed.
+    value: {get_attr: [asg, scale_down_url]}
+
+  asg_size:
+    description: >
+      This is the current size of the auto scaling group.
+    value: {get_attr: [asg, asg_size]}
+  
+  vip_floatingip:
+    description: vip_floatingip
+    value: {get_attr: [asg, vip_floatingip]}
+

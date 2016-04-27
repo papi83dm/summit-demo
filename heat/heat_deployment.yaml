@@ -1,0 +1,29 @@
+heat_template_version: 2013-05-23
+#
+# A wrapper to heat deployment
+#
+parameters:
+  salt_id:
+    description: salt id
+    type: string
+  config:
+    description: config
+    type: string
+  outputs:
+    description: outputs
+    type: json
+    default: []
+resources:
+  script:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      config: {get_param: config}
+      group: script
+      outputs: {get_param: outputs}
+  deploy:
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      signal_transport: HEAT_SIGNAL
+      config: {get_resource: script}
+      server: {get_param: salt_id}
+

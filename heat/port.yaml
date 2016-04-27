@@ -1,0 +1,32 @@
+heat_template_version: 2013-05-23
+parameters:
+  network:
+    description: network
+    type: string
+  allowed_address_pairs:
+    description: allowed address pairs
+    type: json
+    default: []
+  security_groups:
+    description: security group
+    type: json
+    default: []
+
+resources:
+  port:
+    type: OS::Neutron::Port
+    properties:
+      network: {get_param: network}
+      allowed_address_pairs: {get_param: allowed_address_pairs}
+      security_groups: {get_param: security_groups}
+
+outputs:
+  port_ip:
+    value: {get_attr: [port, fixed_ips, 0, ip_address]}
+    description: port ip address
+  port_id:
+    value: {get_resource: port}
+    description: port id
+  port_mac:
+    value: {get_attr: [port, mac_address]}
+

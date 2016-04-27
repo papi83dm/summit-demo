@@ -1,0 +1,23 @@
+heat_template_version: 2013-05-23
+#
+# ssh:    22
+#
+resources:
+  sg:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: compute node security group
+      rules:
+      - protocol: icmp
+      - protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+      - protocol: tcp
+        port_range_min: 80
+        port_range_max: 80
+      
+outputs:
+  secgroup_id:
+    value: {get_resource: sg}
+    description: secgroup id
+

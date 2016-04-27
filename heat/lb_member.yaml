@@ -1,0 +1,128 @@
+heat_template_version: 2013-05-23
+parameters:
+  image:
+    description: image
+    type: string
+    default: fedora-sc
+  flavor:
+    description: flavor
+    type: string
+    default: demo
+  user:
+    description: admin user
+    type: string
+    default: fedora
+  network:
+    description: networks
+    type: string
+    default: t2-demo
+  user_data:
+    type: string
+    description: user data
+    default: |
+      #!/bin/bash
+      echo "Hello world!"
+  keypair:
+    description: key name
+    type: string
+    default: test_key
+  secgroup_id:
+    description: security group_id
+    type: string
+    default: default
+  suffix:
+    description: suffix name
+    type: string
+    default: ""
+  pool:
+    type: string
+    description: Pool to contact
+  p_port:
+    type: number
+    description: Protocol port used by pool member
+    default: 80
+
+resources:
+  rand:
+    type: OS::Heat::RandomString
+    properties:
+      length: 6
+      sequence: lowercase
+  port:
+    type: port.yaml
+    properties:
+      security_groups:
+        - get_param: secgroup_id
+      network: {get_param: network}
+  server:
+    type: OS::Nova::Server
+    properties:
+      name: 
+        str_replace:
+          template: vm-rand-suffix
+          params:
+            rand: {get_resource: rand}
+            vm: {"Fn::Select": [0, {"Fn::Split": ["-", {get_param: "OS::stack_name"}]}]}
+            suffix: {get_param: suffix}
+      image: {get_param: image}
+      flavor: {get_param: flavor}
+      admin_user: {get_param: user}
+      networks:
+        - port: {get_attr: [port, port_id]}
+      user_data_format: SOFTWARE_CONFIG
+      software_config_transport: POLL_SERVER_HEAT
+      user_data: {get_param: user_data}
+      key_name: {get_param: keypair}
+
+  deploy:
+    type: heat_deployment.yaml
+    properties:
+      salt_id:  {get_resource: server}
+      config:
+        str_replace:
+          template: |
+            #!/bin/bash
+            echo "Deploy a simple web server on IP at `date`" >>/tmp/deploy.log
+            # ensure dns is correct
+            grep -q '8.8.8.8' /etc/resolv.conf || echo "nameserver 8.8.8.8" >>/etc/resolv.conf
+            # download a web server from github
+            git clone https://github.com/shalq/web-app.git
+            cp web-app/webapp /usr/local/bin/
+            chmod +x /usr/local/bin/webapp
+            # install supervisor
+            pip install supervisor
+            # create supervisor conf
+            mkdir -p /etc/supervisor/conf.d/
+            mkdir -p /var/log/supervisor/
+            cat >/etc/supervisord.conf <<EOF
+            supervisor_conf_content
+            EOF
+            # create conf for web app
+            cat >/etc/supervisor/conf.d/web.conf <<EOF
+            [program:webapp]
+            command=/usr/local/bin/webapp
+            stdout_logfile=/var/log/webapp.log
+            redirect_stderr=true
+            EOF
+            /bin/supervisord
+            exit 0
+          params:
+            IP: {get_attr: [port, port_ip]}
+            supervisor_conf_content: {get_file: supervisor.conf}
+  member:
+    type: OS::Neutron::PoolMember
+    properties:
+      pool_id: {get_param: pool}
+      address: {get_attr: [port, port_ip]}
+      protocol_port: {get_param: p_port}
+
+outputs:
+  user:
+    value: {get_param: user}
+    description: admin user
+  server_id:
+    value: {get_resource: server}
+    description: server id
+  ip:
+    value: {get_attr: [port, port_ip]}
+

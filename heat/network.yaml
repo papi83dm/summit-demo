@@ -1,0 +1,48 @@
+heat_template_version: 2013-05-23
+
+parameters:
+  external_network:
+    type: string
+    description: external network
+    default: public
+  front_cidr:
+    type: string
+    description: frontend subnet cidr
+    default: 172.16.100.0/24
+
+resources:
+  frontend:
+    type: OS::Neutron::Net
+    properties:
+      name:
+        str_replace:
+          template: stack-private-frontend
+          params:
+            stack: {"Fn::Select": [0, {"Fn::Split": ["-", {get_param: "OS::stack_name"}]}]}
+  frontend_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      network_id: {get_resource: frontend}
+      cidr: {get_param: front_cidr}
+      dns_nameservers: [8.8.8.8]
+  router:
+    type: OS::Neutron::Router
+  gateway:
+    type: OS::Neutron::RouterGateway
+    properties:
+      router_id: {get_resource: router}
+      network_id: {get_param: external_network}
+  interface:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: {get_resource: router}
+      subnet_id: {get_resource: frontend_subnet}
+
+outputs:
+  front_net:
+    description: frontend internal network
+    value: {get_resource: frontend}
+  front_subnet:
+    description: frontend internal subnet
+    value: {get_resource: frontend_subnet}
+

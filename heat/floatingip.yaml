@@ -1,0 +1,29 @@
+heat_template_version: 2013-05-23
+parameters:
+  external_network:
+    description: external network
+    type: string
+  port_id:
+    description: port id
+    type: string
+  port_ip:
+    description: port ip
+    type: string
+
+resources:
+  floatingip:
+    type: "OS::Neutron::FloatingIP"
+    properties:
+      floating_network: {get_param: external_network}
+  floatingip_association:
+    type: "OS::Neutron::FloatingIPAssociation"
+    properties:
+      floatingip_id: {get_resource: floatingip}
+      port_id: {get_param: port_id}
+      fixed_ip_address: {get_param: port_ip}
+
+outputs:
+  floatingip:
+    description: floating ip
+    value: {get_attr: [floatingip, floating_ip_address]}
+
