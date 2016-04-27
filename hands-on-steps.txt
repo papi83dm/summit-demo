@@ -1,26 +1,49 @@
 Hands-on steps
 
 1. Create a stack
+Source openrc of your devstack, if you use the OpenStack provided by us, an openrc is available there, source it as follow :
 
-cd /home/demo/hands-on/ heat/
-. openrc.demo ; 
-heat stack-create –e env.yaml –f test-lb.yaml  <stack-name>
-please use your group number as the stack name such as group1 so that we can track the progress of your stack. 
+    cd /home/demo/hands-on/heat/
+    . openrc.demo ; 
+	
+Create stack:   
+    heat stack-create -e env.yaml -f test-lb.yaml  <stack-name>
+(Notes: If you use the OpenStack env provided by us, please use your group number as the stack name such as group1 so that we can track the progress of your stack. )
 
-2. Check stack 
+2. Check stack status
 
-check resource-list of stack :  heat resource-list <stack-name>
-check status of VM in the stack: 
+Check resource-list of stack :  
+    heat resource-list <stack-name>
+Check status of VM in the stack: 
     nova list | grep <stack-name>
     nova console-log <cluster-member-vm>
 
 3. Logon the vm
-Get private key : /home/demo/hands-on/heat/heat-key-print <stack-name>
-Save the private key into a temprory file such as /tmp/group1.key
-Change its permission to 600 by “chmod 600 /tmp/group1.key”
-Logon the vm: ssh –i /tmp/group1.key fedora@<vm-ip>
+Get private key : /home/demo/hands-on/heat/heat-key-print <stack-name> or heat output 
+------------------heat-key-print-----------------------------------------------------------
+#!/bin/bash
+#
+# heat-key-print
+#
+# print the ssh private key of the stack
+#
+function usage
+{
+    echo "heat-key-print <stack>" 1>&2
+    exit 1
+}
+[ $1 ] || usage
+stack=$1
+keypair=` heat resource-list $stack 2>/dev/null| awk '{ print $2, $4 }' | grep ^keypair | awk '{print $2}'`
+echo -n -e `heat output-show $keypair key 2>/dev/null| sed 's/"//g'`
+---------------------------------------------------------------------------------------------
 
-You can check stack progress by “heat resource-list <stack>” or nova console <server>
+Save the private key into a temprory file such as /tmp/group1.key
+Change its permission to 600 such as "chmod 600 /tmp/group1.key"
+Logon the vm: 
+   ssh -i /tmp/group1.key fedora@<vm-ip>
+
+You can check stack progress by "heat resource-list <stack-name> " or "nova console <server>"
 
 4.  Get cluster information when stack is in CREATE_COMPLETE 
 
@@ -30,13 +53,17 @@ Check member list of the cluster :  heat outputshow <stack-name> member_list
 
 5. Test webapp by vip when stack is in CREATE_COMPLETE 
 
-Get floatingip of the vip : heat output-show <stack-name> vip_floatingip
-Test floatingip of the vip :  curl <floatingip of vip> , it will output server’s hostname and current time
-Test vip: logon the vm, and run “curl <vip>”
+Get floatingip of the vip : 
+    heat output-show <stack-name> vip_floatingip
+Test floatingip of the vip :  
+    curl <floatingip of vip> , it will output server's hostname and current time
+Test vip: logon the vm, and run "curl <vip>"
 
 6. Add a new member into cluster  <optional>                 
 
-Get scale up url: heat output-show <stack-name> scale_up_url
-Scale up: curl –XPOST –i <scale_up_url>
+Get scale up url: 
+   heat output-show <stack-name> scale_up_url
+Scale up: 
+   curl -XPOST -i  <scale_up_url>
 Test vip :  curl <vip> for several times, the request will be redirected to member1 and member2
 
