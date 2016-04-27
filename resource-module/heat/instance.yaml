@@ -1,0 +1,107 @@
+heat_template_version: 2013-05-23
+parameters:
+  image:
+    description: image
+    type: string
+    default: ubuntu-salt-v0.8
+  flavor:
+    description: flavor
+    type: string
+    default: m1.small
+  user:
+    description: admin user
+    type: string
+    default: ubuntu
+  name:
+    description: name
+    type: string
+    default: salt
+  keypair:
+    description: keypair name or id
+    type: string
+    default: sha_key
+  networks:
+    description: networks
+    type: json
+    default: []
+  hints:
+    description: scheduler hints
+    type: json
+    default: {}
+  vhost_zone:
+    description: vizio compute zone
+    type: string
+    default: nova
+  user_data:
+    type: string
+    description: user data
+    default: |
+      #!/bin/bash
+      function set_static_ip()
+      {
+          dev=$1
+          grep -q "\<$dev:" /proc/net/dev || return
+          devcfg=/etc/network/interfaces.d/$dev.cfg
+          if [ ! -f "$devcfg" ]; then
+              echo "auto $dev" > $devcfg
+              echo "iface $dev inet dhcp" >> $devcfg
+              ifup $dev
+          fi
+          eval `ip route list | grep "dev $dev.*src" | awk '{print "cidr="$1, "address="$9}'`
+          netmask=`ipcalc $cidr | grep Netmask: | awk '{print $2}'`
+          nameservers=`cat /etc/resolv.conf  | grep ^nameserver | awk '{print $2}' | xargs`
+          cat <<EOF > $devcfg
+      auto $dev
+      iface $dev inet static
+      address $address
+      netmask $netmask
+      dns-nameservers $nameservers
+      EOF
+          gateway=`ip route list | grep "default.*dev $dev\>" | awk '{print $3}'`
+          [ -n "$gateway" ] && echo "gateway $gateway" >> $devcfg
+          ip route list | grep "^[0-9].*via.* dev $dev\>" | while read hroute; do
+              cidr=`echo $hroute | cut -d' ' -f1`
+              gw=`echo $hroute | cut -d' ' -f3`
+              [ -n "$cidr" -a -n "$gw" -a "$gw" != "$gateway" ] && echo "up ip route add $cidr via $gw" >> $devcfg
+          done
+          ifdown $dev
+          ifup $dev
+      }
+      [ -f /etc/init/os-collect-config.conf ] && service os-collect-config stop
+      ifdown eth0
+      set_static_ip eth1
+      ifup eth0
+      set_static_ip eth0
+      [ -f /etc/init/os-collect-config.conf ] && service os-collect-config start
+
+resources:
+  server:
+    type: OS::Nova::Server
+    properties:
+      name:
+        str_replace:
+          template: stack-name
+          params:
+            stack: {"Fn::Select": [0, {"Fn::Split": ["-", {get_param: "OS::stack_name"}]}]}
+            name: {get_param: name}
+      key_name: {get_param: keypair}
+      image: {get_param: image}
+      flavor: {get_param: flavor}
+      admin_user: {get_param: user}
+      networks: {get_param: networks}
+      scheduler_hints: {get_param: hints}
+      user_data_format: SOFTWARE_CONFIG
+      software_config_transport: POLL_SERVER_HEAT
+      user_data: {get_param: user_data}
+      availability_zone: {get_param: vhost_zone}
+
+outputs:
+  user:
+    value: {get_param: user}
+    description: admin user
+  server_id:
+    value: {get_resource: server}
+    description: server id
+  server_ip:
+    value: {get_attr: [server, first_address]}
+

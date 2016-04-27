@@ -1,0 +1,17 @@
+#!/bin/bash
+#
+# heat-key-print
+# 
+# print the ssh private key of the stack
+# 
+function usage
+{
+    echo "heat-key-print <stack>" 1>&2
+    exit 1
+}
+[ $1 ] || usage
+stack=$1
+keypair=` heat resource-list $stack 2>/dev/null| awk '{ print $2, $4 }' | grep ^keypair | awk '{print $2}'`
+echo -n -e `heat output-show $keypair key 2>/dev/null| sed 's/"//g'`
+
+

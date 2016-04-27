@@ -1,0 +1,30 @@
+heat_template_version: 2013-05-23
+#
+# Keypair
+#
+resources:
+  rand:
+    type: OS::Heat::RandomString
+    properties:
+      length: 8
+      sequence: lowercase
+  keypair:
+    type: OS::Nova::KeyPair
+    properties:
+      save_private_key: True
+      name:
+        str_replace:
+          template: stack-rand
+          params:
+            stack: {"Fn::Select": [0, {"Fn::Split": ["-", {get_param: "OS::stack_name"}]}]}
+            rand: {get_resource: rand}
+outputs:
+  key:
+    description: private key
+    value: {get_attr: [keypair, private_key]}
+  pubkey:
+    description: public key
+    value: {get_attr: [keypair, public_key]}
+  keypair_id:
+    value: {get_resource: keypair}
+

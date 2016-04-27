@@ -1,0 +1,78 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Deploy instances using auto-scaling group, user can add additional
+  nodes by sending a signal to auto scaling resource.
+
+parameters:
+  network:
+    description: backend internal network
+    type: string
+    default: t2-demo
+  keypair:
+    description: keypair for neutron instance
+    type: string
+    default: test_key
+  manager:
+    description: the resource id of manager node
+    type: string
+    default: salt-id
+
+resources:
+  sg:
+    type: secgroup_salt.yaml
+
+  asg:
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      resource:
+        type: member.yaml
+        properties:
+          keypair: { get_param: keypair }
+          network: { get_param: network }
+          manager: { get_param: manager }
+          secgroup_id: { get_attr: [ sg, secgroup_id ]}
+      min_size: 1
+      desired_capacity: 1
+      max_size: 30
+
+  scale_up_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: asg}
+      cooldown: 60
+      scaling_adjustment: 1
+
+  scale_down_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: asg}
+      cooldown: 60
+      scaling_adjustment: -1
+
+outputs:
+  scale_up_url:
+    description: >
+      This URL is the webhook to scale up the group.  You can invoke
+      the scale-up operation by doing an HTTP POST to this URL; no
+      body nor extra headers are needed.
+    value: {get_attr: [scale_up_policy, alarm_url]}
+
+  scale_down_url:
+    description: >
+      This URL is the webhook to scale down the group.  You can invoke
+      the scale-up operation by doing an HTTP POST to this URL; no
+      body nor extra headers are needed.
+    value: {get_attr: [scale_down_policy, alarm_url]}
+  vm_list:
+    description: >
+      Ip list of vms in asg
+    value: {get_attr: [ asg, outputs_list, server_ip ]} 
+  asg_size:
+    description: >
+      This is the current size of the auto scaling group.
+    value: {get_attr: [asg, current_size]}
+
+

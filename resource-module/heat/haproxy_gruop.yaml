@@ -1,0 +1,173 @@
+heat_template_version: 2013-05-23
+description: haproxy node
+parameters:
+  image:
+    type: string
+    description: Image used for the server
+    default: ubuntu-amd64
+  key:
+    type: string
+    description: SSH key to connect to the server
+    default: heat_key
+  flavor:
+    type: string
+    description: flavor used by the server
+    default: m1.small
+  frontend_network:
+    type: string
+    description: internal network of the group
+    default: private
+  frontend_subnet:
+    type: string
+    description: internal subnet of the member
+  manager_id:
+    type: string
+    description: manager server id
+  manager_ip:
+    type: string
+    description: manager server ip
+  config:
+    type: string
+    description: configuration for each member
+  security_group:
+    type: string
+    description: security group
+  floating_update:
+    type: string
+    description: Software config floating ip update
+
+resources:
+  floating_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: frontend_network }
+      fixed_ips:
+        - subnet_id: { get_param: frontend_subnet }
+      security_groups:
+        - { get_param: security_group }
+
+  secondary_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: frontend_network }
+      fixed_ips:
+        - subnet_id: { get_param: frontend_subnet }
+      allowed_address_pairs:
+        - ip_address: { get_attr: [ floating_port, fixed_ips, 0, ip_address ] }
+      security_groups:
+        - { get_param: security_group }
+
+  primary_port:
+    type: OS::Neutron::Port
+    properties:
+      network_id: { get_param: frontend_network }
+      fixed_ips:
+        - subnet_id: { get_param: frontend_subnet }
+      allowed_address_pairs:
+        - ip_address: { get_attr: [ floating_port, fixed_ips, 0, ip_address ] }
+      security_groups:
+        - { get_param: security_group }
+
+  secondary_rand:
+    type: OS::Heat::RandomString
+    properties:
+      length: 8
+      sequence: lowercase
+
+  primary_rand:
+    type: OS::Heat::RandomString
+    properties:
+      length: 8
+      sequence: lowercase
+
+  secondary:
+    type: OS::Nova::Server
+    properties:
+      name:
+        str_replace:
+          template: stack-role-rand
+          params:
+            stack: { "Fn::Select": [0, { "Fn::Split": ["-", { get_param: "OS::stack_name" }] }] }
+            role: { "Fn::Select": [1, { "Fn::Split": ["-", { str_replace: { template: { get_param: "OS::stack_name" }, params: { "-service-":"" } } }] }] }
+            rand: { get_resource: secondary_rand }
+      flavor: { get_param: flavor }
+      image: { get_param: image }
+      key_name: { get_param: key }
+      networks:
+        - port: { get_resource: secondary_port }
+      user_data_format: SOFTWARE_CONFIG
+
+  primary:
+    type: OS::Nova::Server
+    depends_on: [ secondary ]
+    properties:
+      name:
+        str_replace:
+          template: stack-role-rand
+          params:
+            stack: { "Fn::Select": [0, { "Fn::Split": ["-", { get_param: "OS::stack_name" }] }] }
+            role: { "Fn::Select": [1, { "Fn::Split": ["-", { str_replace: { template: { get_param: "OS::stack_name" }, params: { "-service-":"" } } }] }] }
+            rand: { get_resource: primary_rand }
+      flavor: { get_param: flavor }
+      image: { get_param: image }
+      key_name: { get_param: key }
+      networks:
+        - port: { get_resource: primary_port }
+      user_data_format: SOFTWARE_CONFIG
+
+  r_secondary:
+    type: OS::Heat::HARestarter
+    properties:
+      InstanceId: { get_resource: secondary }
+
+  r_primary:
+    type: OS::Heat::HARestarter
+    properties:
+      InstanceId: { get_resource: primary }
+
+  do_reg_secondary:
+    type: OS::Heat::SoftwareDeployment
+    depends_on: [ do_reg_primary ]
+    properties:
+      config: { get_param: config }
+      server:
+        get_resource: secondary
+      input_values:
+        manager_ip: { get_param: manager_ip }
+        role: { "Fn::Select": [ 1, { "Fn::Split": [ "-", { str_replace: { template: { get_param: "OS::stack_name" }, params: { "-service-":"" }}}]}]}
+        restart_url: { get_attr: [ r_secondary, AlarmUrl ] }
+
+  do_reg_primary:
+    type: OS::Heat::SoftwareDeployment
+    properties:
+      config: { get_param: config }
+      server:
+        get_resource: primary
+      input_values:
+        manager_ip: { get_param: manager_ip }
+        role: { "Fn::Select": [1, { "Fn::Split": [ "-", { str_replace: { template: { get_param: "OS::stack_name" }, params: { "-service-":"" } } }] }] }
+        restart_url: { get_attr: [ r_primary, AlarmUrl ] }
+
+  do_shared_update:
+      type: OS::Heat::SoftwareDeployment
+      properties:
+        config: { get_param: floating_update }
+        server:
+          get_param: manager_id
+        input_values:
+          floatingip: { get_attr: [ floating_port, fixed_ips, 0, ip_address ] }
+          role:
+            str_replace:
+              template: name_func
+              params:
+                name: { "Fn::Select": [0, {"Fn::Split": [ "_", {"Fn::Select": [1, {"Fn::Split": ["-", {str_replace: {template: {get_param: "OS::stack_name"}, params: {"-service-":""}}}]}]}]}]}
+                func: shared_ip
+
+outputs:
+  primary_address:
+    description: First ip address of the server
+    value: { get_attr: [ primary, first_address ] }
+  secondary_address:
+    description: First ip address of the server
+    value: { get_attr: [ secondary, first_address ] }
+

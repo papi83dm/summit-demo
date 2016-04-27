@@ -1,0 +1,29 @@
+heat_template_version: 2013-05-23
+#
+# ssh:    22
+# salt-master: 4505 4506
+#
+resources:
+  salt:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: compute node security group
+      rules:
+      - protocol: icmp
+      - protocol: tcp
+        port_range_min: 22
+        port_range_max: 22
+      - protocol: tcp
+        port_range_min: 4505
+        port_range_max: 4505
+      - protocol: tcp
+        port_range_min: 4506
+        port_range_max: 4506
+      - protocol: tcp
+        port_range_min: 80
+        port_range_max: 80      
+outputs:
+  secgroup_id:
+    value: {get_resource: salt}
+    description: secgroup id
+

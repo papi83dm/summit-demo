@@ -1,0 +1,56 @@
+heat_template_version: 2013-05-23
+
+parameters:
+  network:
+    description: network
+    type: string
+    default: vl4-backend-aibqebqy6edq-net-i2hoqpcx5f6b
+  
+resources:
+
+  keypair:
+    type: IBM::Alchemy::Keypair
+    
+  manager:
+   type: IBM::Alchemy::Manager 
+   properties:
+     network: {get_param: network}
+     keypair: {get_attr: [keypair, keypair_id]}
+     privkey: {get_attr: [keypair, key]}
+     pubkey: {get_attr: [keypair, pubkey]}
+  
+  asg:
+    type: IBM::Alchemy::Group
+    depends_on: [manager]
+    properties:
+      keypair: {get_attr: [keypair, keypair_id]}
+      manager: {get_attr: [manager, server_id]}
+      network: {get_param: network}
+
+outputs:
+  manager:
+    description: manager node ip
+    value: {get_attr: [manager, server_ip]}
+  vm_list:
+    description: vm list
+    value: {get_attr: [asg, vm_list]}
+  key:
+    description: private key
+    value: {get_attr: [keypair, key]}
+  scale_up_url:
+    description: >
+      This URL is the webhook to scale up the group.  You can invoke
+      the scale-up operation by doing an HTTP POST to this URL; no
+      body nor extra headers are needed.
+    value: {get_attr: [asg, scale_up_url]}
+  scale_down_url:
+    description: >
+      This URL is the webhook to scale down the group.  You can invoke
+      the scale-up operation by doing an HTTP POST to this URL; no
+      body nor extra headers are needed.
+    value: {get_attr: [asg, scale_down_url]}
+  asg_size:
+    description: >
+      This is the current size of the auto scaling group.
+    value: {get_attr: [asg, asg_size]}
+

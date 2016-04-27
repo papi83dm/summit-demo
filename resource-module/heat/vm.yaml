@@ -1,0 +1,53 @@
+heat_template_version: 2014-10-16
+#
+# create a vm and deploy something
+#
+parameters:
+  keypair:
+    description:  keypair name or id
+    type: string
+    default: sha_key
+  network:
+    description: backend internal network id
+    type: string
+    default: t2-demo
+  image:
+    description: image
+    type: string
+    default: ubuntu-salt-v0.8 
+  name:
+    description: vm name
+    type: string
+    default: salt
+  secgroup_id:
+    description: security group_id
+    type: string
+
+resources:
+
+  port:
+    type: port.yaml
+    properties:
+      security_groups:
+        - get_param: secgroup_id
+      network: {get_param: network}
+
+  vm:
+    type: instance.yaml
+    properties:
+      networks:
+        - port: {get_attr: [ port, port_id ]}
+      keypair: {get_param: keypair}
+      image: {get_param: image}
+      name: {get_param: name}
+
+outputs:
+  server_ip: 
+    description: ip address of vm
+    value: {get_attr: [vm, server_ip]}
+  server_id:
+    description: server id
+    value: {get_attr: [vm, server_id]}
+  port_id:
+    description: port id
+    value: {get_attr: [port, port_id]}

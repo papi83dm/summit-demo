@@ -1,0 +1,93 @@
+heat_template_version: 2014-10-16
+#
+# create a vm and deploy something
+#
+parameters:
+  manager:
+    description: manager node id
+    type: string
+    default: salt-id
+  keypair:
+    description:  keypair name or id
+    type: string
+    default: sha_key
+  network:
+    description: backend internal network id
+    type: string
+    default: t2-demo
+  image:
+    description: image
+    type: string
+    default: ubuntu-salt-v0.8 
+  name:
+    description: vm name
+    type: string
+    default: salt
+  secgroup_id:
+    description: security group_id
+    type: string
+    default: default
+  pool:
+    type: string
+    description: Pool to contact
+  port:
+    type: number
+    description: Protocol port used by pool member
+    default: 443
+
+resources:
+  rand:
+    type: OS::Heat::RandomString
+    properties:
+      length: 8
+      sequence: lowercase
+  vm:
+    type: vm.yaml
+    properties:
+      network: {get_param: network}
+      keypair: {get_param: keypair}
+      image: {get_param: image}
+      secgroup_id: {get_param: secgroup_id}
+      name:
+        str_replace:
+          template: |
+            member-rand
+          params:
+            rand: {get_resource: rand}
+  deploy:
+    type: heat_deployment.yaml
+    depends_on: [vm]
+    properties:
+      salt_id:  {get_param: manager} 
+      config:
+        str_replace:
+          template: |
+            #!/bin/bash
+            echo "Deploy docker on IP at `date`" >>/home/ubuntu/deploy.log
+            echo "Store restart url restart_url for IP " >>/home/ubuntu/deploy.log
+            /opt/deploy/setup_node.sh IP
+          params:
+            IP: {get_attr: [vm, server_ip]}
+            restart_url: {get_attr: [restarter, AlarmUrl]}
+
+  member:
+    type: OS::Neutron::PoolMember
+    properties:
+      pool_id: {get_param: pool}
+      address: {get_attr: [vm, server_ip]}
+      protocol_port: {get_param: port}
+
+
+  restarter:
+    type: OS::Heat::HARestarter
+    properties:
+      InstanceId: {get_attr: [vm, server_id]}
+
+
+outputs:
+  restart_url:
+    description: url to restart the instance.
+    value: {get_attr: [restarter, AlarmUrl]}
+  server_ip: 
+    description: ip address of vm
+    value: {get_attr: [vm, server_ip]}

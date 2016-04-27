@@ -1,0 +1,136 @@
+heat_template_version: 2014-10-16
+
+description: >
+  Deploy instances using auto-scaling group, user can add additional
+  nodes by sending a signal to auto scaling resource.
+
+parameters:
+  network:
+    description: backend internal network
+    type: string
+    default: t2-demo
+  subnet:
+    type: string
+    description: internal subnet of the member
+  keypair:
+    description: keypair for neutron instance
+    type: string
+    default: test_key
+  manager:
+    description: the resource id of manager node
+    type: string
+    default: salt-id
+  protocol:
+    type: string
+    description: protocol of the port for ASG pool
+    default: HTTP
+  port:
+    type: number
+    description: Protocol port used by the group
+    default: 80
+  floatingip_id:
+    type: string
+    description: floating_ip of vip of pool
+  group_size:
+    type: number
+    description: amount of member in group
+    default: 1
+      
+resources:
+  sg:
+    type: secgroup_salt.yaml
+
+  asg:
+    type: OS::Heat::AutoScalingGroup
+    properties:
+      resource:
+        type: lb_member.yaml
+        properties:
+          keypair: { get_param: keypair }
+          network: { get_param: network }
+          manager: { get_param: manager }
+          secgroup_id: { get_attr: [ sg, secgroup_id ]}
+          pool: {get_resource: pool}
+          port: {get_param: port}
+      min_size: 1
+      desired_capacity: {get_param: group_size}
+      max_size: 30
+
+  scale_up_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: asg}
+      cooldown: 60
+      scaling_adjustment: 1
+
+  scale_down_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: asg}
+      cooldown: 60
+      scaling_adjustment: -1
+
+  monitor:
+    type: OS::Neutron::HealthMonitor
+    properties:
+      type: {get_param: protocol}
+      http_method: GET
+      url_path: /
+      expected_codes: "200"
+      delay: 15
+      max_retries: 5
+      timeout: 10
+
+  pool:
+    type: OS::Neutron::Pool
+    properties:
+      protocol: {get_param: protocol}
+      subnet_id: {get_param: subnet}
+      monitors: [{get_resource: monitor}]
+      lb_method: ROUND_ROBIN
+      vip:
+        protocol_port: {get_param: port}
+        subnet: {get_param: subnet}
+  lb:
+    type: OS::Neutron::LoadBalancer
+    properties:
+      protocol_port: {get_param: port}
+      pool_id: {get_resource: pool}
+
+  floatingip_association:
+    type: "OS::Neutron::FloatingIPAssociation"
+    properties:
+      floatingip_id: {get_param: [floatingip_id]}
+      port_id: {get_attr: [pool, vip, port_id]}
+      fixed_ip_address: {get_attr: [pool, vip, address]}  
+
+outputs:
+  scale_up_url:
+    description: >
+      This URL is the webhook to scale up the group.  You can invoke
+      the scale-up operation by doing an HTTP POST to this URL; no
+      body nor extra headers are needed.
+    value: {get_attr: [scale_up_policy, alarm_url]}
+
+  scale_down_url:
+    description: >
+      This URL is the webhook to scale down the group.  You can invoke
+      the scale-up operation by doing an HTTP POST to this URL; no
+      body nor extra headers are needed.
+    value: {get_attr: [scale_down_policy, alarm_url]}
+  member_list:
+    description: >
+      Ip list of vms in asg
+    value: {get_attr: [ asg, outputs_list, server_ip ]} 
+  asg_size:
+    description: >
+      This is the current size of the auto scaling group.
+    value: {get_attr: [asg, current_size]}
+  vip:
+    description: >
+      vip of the auto scaling group.
+    value: {get_attr: [pool, vip, address]}
+
+

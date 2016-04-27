@@ -1,0 +1,85 @@
+heat_template_version: 2013-05-23
+description: |
+  Create a manager node.
+parameters:
+  network:
+    description: network
+    type: string
+  floatingip_id:
+    description: floatingip id
+    type: string
+  keypair:
+    description: keypair name or id
+    type: string
+    default: sha_key
+  privkey:
+    description: private key
+    type: string
+  pubkey:
+    description: public key
+    type: string
+
+resources:
+
+  sg:
+    type: secgroup_salt.yaml
+
+  manager:
+   type: vm.yaml
+   properties:
+     keypair: {get_param: keypair}
+     network: {get_param: network}
+     secgroup_id: {get_attr: [ sg, secgroup_id]}
+
+  floatingip_association:
+    type: "OS::Neutron::FloatingIPAssociation"
+    properties:
+      floatingip_id: {get_param: floatingip_id}
+      port_id: {get_attr: [manager, port_id]}
+
+  deploy_contents:
+   type: deploy_contents.yaml
+
+  manager_bootstrap:
+    type: heat_deployment.yaml
+    properties:
+      salt_id: {get_attr: [manager, server_id]}
+      config:
+        str_replace:
+          template: |
+            #!/bin/bash
+            mkdir -p /opt/deploy/etc
+            cd /opt/deploy/etc
+            cat > id_rsa << EOF
+            id_rsa_contents
+            EOF
+            cat > id_rsa.pub << EOF
+            id_rsa_pub_contents
+            EOF
+            cat > hosts << EOF
+            manager_ip salt
+            EOF
+            chmod 0600 id_rsa*
+            cd /opt/deploy
+            (cat | base64 -d | gunzip | cpio -id) << EOF
+            deploy_contents
+            EOF
+            chown -R root:root .
+            chmod a+x *.sh salt/scripts/*.sh
+            ./bootstrap.sh
+          params:
+            deploy_contents: {get_attr: [deploy_contents, contents]}
+            manager_ip: {get_attr: [manager, server_ip]}
+            id_rsa_contents: {get_param: privkey}
+            id_rsa_pub_contents: {get_param: pubkey}
+
+
+outputs:
+  server_id:
+    description: manager server id
+    value: {get_attr: [manager, server_id]}
+  server_ip:
+    description: manager server ip
+    value: {get_attr: [manager, server_ip]}
+  
+
