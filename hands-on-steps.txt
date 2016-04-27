@@ -1,0 +1,42 @@
+Hands-on steps
+
+1. Create a stack
+
+cd /home/demo/hands-on/ heat/
+. openrc.demo ; 
+heat stack-create –e env.yaml –f test-lb.yaml  <stack-name>
+please use your group number as the stack name such as group1 so that we can track the progress of your stack. 
+
+2. Check stack 
+
+check resource-list of stack :  heat resource-list <stack-name>
+check status of VM in the stack: 
+    nova list | grep <stack-name>
+    nova console-log <cluster-member-vm>
+
+3. Logon the vm
+Get private key : /home/demo/hands-on/heat/heat-key-print <stack-name>
+Save the private key into a temprory file such as /tmp/group1.key
+Change its permission to 600 by “chmod 600 /tmp/group1.key”
+Logon the vm: ssh –i /tmp/group1.key fedora@<vm-ip>
+
+You can check stack progress by “heat resource-list <stack>” or nova console <server>
+
+4.  Get cluster information when stack is in CREATE_COMPLETE 
+
+Get floatingip of vip:  heat output-show <stack-name>  vip_floatingip
+Check group size of the stack :  heat outputshow <stack-name> asg_size
+Check member list of the cluster :  heat outputshow <stack-name> member_list
+
+5. Test webapp by vip when stack is in CREATE_COMPLETE 
+
+Get floatingip of the vip : heat output-show <stack-name> vip_floatingip
+Test floatingip of the vip :  curl <floatingip of vip> , it will output server’s hostname and current time
+Test vip: logon the vm, and run “curl <vip>”
+
+6. Add a new member into cluster  <optional>                 
+
+Get scale up url: heat output-show <stack-name> scale_up_url
+Scale up: curl –XPOST –i <scale_up_url>
+Test vip :  curl <vip> for several times, the request will be redirected to member1 and member2
+
